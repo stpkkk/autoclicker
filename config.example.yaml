@@ -29,9 +29,9 @@ search:
   max_pages_per_query: 3
 
 filters:
-  # Стоп-слова ищутся в названии и описании с учётом границ слов и регистра.
+  # Стоп-слова в названии вакансии. Ищутся только по title.
   # Важно: "Java" не должно срабатывать на "JavaScript".
-  stop_words:
+  title_stop_words:
     - '1С'
     - 'Bitrix'
     - 'Битрикс'
@@ -52,7 +52,29 @@ filters:
     - 'тестировщик'
     - 'Angular'
 
+  # Стоп-слова в разделе требований. Проверяются только строки между
+  # заголовком («Требования», «Мы ожидаем», «Requirements» и т.п.)
+  # и следующим заголовком («Обязанности», «Условия», ...).
+  # Если раздел не найден, по описанию вакансия не отсекается.
+  requirements_stop_words:
+    - 'Java'
+    - 'Spring'
+    - 'PHP'
+    - 'Angular'
+    - '1С'
+    - 'Bitrix'
+    - 'Битрикс'
+    - 'WordPress'
+    - 'C#'
+    - '.NET'
+    - 'Unity'
+
+  # Сколько РАЗНЫХ слов из requirements_stop_words должно найтись в требованиях.
+  requirements_stop_min_hits: 2
+
   # Достаточно одного совпадения. Если список пуст — проверка отключается.
+  # Баланс: если must-have слов в требованиях больше, чем чужих стоп-слов,
+  # вакансия не отсекается.
   must_have_any:
     - 'React'
     - 'Vue'
@@ -84,11 +106,11 @@ cover_letter:
     frontend: |
       Добрый день!
 
-      Заинтересовала вакансия Frontend-разработчик в компании "{{employer_name}}". Разрабатываю больше 4,5 лет, мне ближе сложные интерфейсы и скорость их работы. Делал дашборды с большими объёмами данных, списки на тысячи записей, переиспользуемые компоненты и npm-пакеты.
+      Заинтересовала вакансия «{{vacancy_name}}» в компании "{{employer_name}}". Разрабатываю больше 4,5 лет, мне ближе сложные интерфейсы и скорость их работы. Делал дашборды с большими объёмами данных, списки на тысячи записей, переиспользуемые компоненты и npm-пакеты.
 
       Работаю с React, Vue, Next.js, TypeScript, Redux Toolkit, TanStack Query, Tailwind и Git.  
-      Telegram [https://t.me/stpk_dev](https://t.me/stpk_dev)  
-      GitHub [https://github.com/stpkkk](https://github.com/stpkkk)
+      Telegram: https://t.me/stpk_dev  
+      GitHub: https://github.com/stpkkk
 
       Буду рад обсудить, чем могу помочь команде.
 
@@ -97,11 +119,11 @@ cover_letter:
     fullstack: |
       Добрый день!
 
-      Заинтересовала вакансия Разработчика в компании "{{employer_name}}". Разрабатываю больше 4,5 лет, последние почти два года веду задачи целиком. Делаю API и схему БД на NestJS, PostgreSQL и Prisma, интерфейс на Vue или React с TypeScript, подключаю внешние сервисы.
+      Заинтересовала вакансия «{{vacancy_name}}» в компании "{{employer_name}}". Разрабатываю больше 4,5 лет, последние почти два года веду задачи целиком. Делаю API и схему БД на NestJS, PostgreSQL и Prisma, интерфейс на Vue или React с TypeScript, подключаю внешние сервисы.
 
       Работаю с React, Vue, Next.js, TypeScript, Node.js, NestJS, PostgreSQL, Prisma и Git.  
-      Telegram [https://t.me/stpk_dev](https://t.me/stpk_dev)  
-      GitHub [https://github.com/stpkkk](https://github.com/stpkkk)
+      Telegram: https://t.me/stpk_dev  
+      GitHub: https://github.com/stpkkk
 
       Буду рад обсудить, чем могу помочь команде.
 

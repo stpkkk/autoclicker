@@ -70,14 +70,50 @@ export async function responseFormHasQuestions(page: Page, form: ResponseForm): 
   return TEXT_INDICATORS.questions.test(await bodyText(page));
 }
 
+async function findLetterToggle(root: Root): Promise<Locator | null> {
+  const fromSelectors = await firstVisibleLocator(root, RESPONSE_SELECTORS.letterToggle);
+  if (fromSelectors) {
+    return fromSelectors;
+  }
+
+  for (const name of [
+    /добавить сопроводительное/iu,
+    /написать сопроводительное/iu,
+    /добавить письмо/iu,
+  ]) {
+    const button = root.getByRole('button', { name }).first();
+    try {
+      if (await button.isVisible()) {
+        return button;
+      }
+    } catch {
+      // Кнопки может не быть — пробуем следующую.
+    }
+  }
+
+  return null;
+}
+
 export async function fillCoverLetter(
   page: Page,
   form: ResponseForm,
   text: string,
 ): Promise<boolean> {
-  const letter =
-    (await waitForAny(form.root, RESPONSE_SELECTORS.letter, 3000)) ??
-    (await waitForAny(page, RESPONSE_SELECTORS.letter, 1000));
+  let letter = await waitForAny(form.root, RESPONSE_SELECTORS.letter, 3000);
+
+  if (!letter) {
+    const toggle =
+      (await findLetterToggle(form.root)) ?? (await findLetterToggle(page));
+    if (toggle) {
+      logger.info('Открываю поле сопроводительного письма');
+      await humanClick(toggle);
+      letter = await waitForAny(form.root, RESPONSE_SELECTORS.letter, 5000);
+    }
+  }
+
+  if (!letter) {
+    letter = await waitForAny(page, RESPONSE_SELECTORS.letter, 1000);
+  }
 
   if (!letter) {
     return false;

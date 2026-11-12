@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { filterVacancy, findTerm, type FilterSettings } from '../src/core/filter.js';
+import {
+  extractRequirementsSection,
+  filterVacancy,
+  findTerm,
+  type FilterSettings,
+} from '../src/core/filter.js';
 import type { Vacancy } from '../src/types.js';
 
 const settings: FilterSettings = {
-  stop_words: ['Java', 'PHP', '1С', 'C#', '.NET', 'Senior+', 'Angular', 'QA'],
+  title_stop_words: ['Java', 'PHP', '1С', 'C#', '.NET', 'Senior+', 'Angular', 'QA'],
+  requirements_stop_words: ['Java', 'Spring', 'PHP', 'Angular', 'QA'],
+  requirements_stop_min_hits: 2,
   must_have_any: ['React', 'Vue', 'TypeScript', 'Node.js', 'NestJS', 'Fullstack', 'Frontend'],
   skip_relocation: true,
   allowed_cities: [],
@@ -44,15 +51,41 @@ describe('findTerm: границы слов', () => {
   });
 });
 
+describe('extractRequirementsSection', () => {
+  it('берет текст от заголовка требований до следующего заголовка', () => {
+    const description = [
+      'О проекте',
+      'Сервис на Java и Spring.',
+      'Требования:',
+      'React, Node.js',
+      'Java, Spring',
+      'Условия:',
+      'Удалённо',
+    ].join('\n');
+
+    expect(extractRequirementsSection(description)).toBe('React, Node.js\nJava, Spring');
+  });
+
+  it('поддерживает английские заголовки и текст в строке заголовка', () => {
+    expect(
+      extractRequirementsSection('About us\nWe build things.\nRequirements: React, Node.js'),
+    ).toBe('React, Node.js');
+  });
+
+  it('возвращает undefined, если раздела требований нет', () => {
+    expect(extractRequirementsSection('О проекте\nСервис на Java и Spring.')).toBeUndefined();
+  });
+});
+
 describe('filterVacancy', () => {
   it('пропускает вакансию без стоп-слов и с must-have', () => {
     expect(filterVacancy(vacancy(), settings)).toEqual({ ok: true });
   });
 
-  it('возвращает причину stop_word для Java', () => {
+  it('возвращает причину stop_word для Java в названии', () => {
     expect(filterVacancy(vacancy({ title: 'Java/React developer' }), settings)).toEqual({
       ok: false,
-      reason: 'stop_word:Java',
+      reason: 'stop_word:Java (title)',
     });
   });
 
@@ -62,13 +95,38 @@ describe('filterVacancy', () => {
     });
   });
 
-  it('ищет стоп-слова в описании', () => {
-    expect(
-      filterVacancy(
-        vacancy({ description: 'Нужен опыт коммерческой разработки на PHP' }),
-        settings,
-      ),
-    ).toEqual({ ok: false, reason: 'stop_word:PHP' });
+  it('не отсекает по Java в описании проекта', () => {
+    const description = [
+      'О проекте',
+      'Легаси-сервис на Java и Spring.',
+      'Требования:',
+      'React, TypeScript',
+      'Мы предлагаем:',
+      'Удалённую работу',
+    ].join('\n');
+
+    expect(filterVacancy(vacancy({ description }), settings)).toEqual({ ok: true });
+  });
+
+  it('отсекает, когда Java и Spring найдены в требованиях', () => {
+    const description = ['Требования:', 'React, Java, Spring', 'Условия:', 'Удалённо'].join('\n');
+
+    expect(filterVacancy(vacancy({ description }), settings)).toEqual({
+      ok: false,
+      reason: 'stop_word:Java (requirements)',
+    });
+  });
+
+  it('не отсекает, если must-have в требованиях больше чужих стоп-слов', () => {
+    const balanceSettings: FilterSettings = {
+      ...settings,
+      requirements_stop_min_hits: 1,
+    };
+    const description = ['Требования:', 'React, Node.js', 'Java', 'Условия:', 'Удалённо'].join(
+      '\n',
+    );
+
+    expect(filterVacancy(vacancy({ description }), balanceSettings)).toEqual({ ok: true });
   });
 
   it('требует хотя бы одно must-have', () => {

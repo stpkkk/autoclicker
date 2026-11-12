@@ -102,6 +102,15 @@ export const RESPONSE_SELECTORS = {
     'textarea[data-qa*="letter"]',
     '[contenteditable="true"][data-qa*="letter"]',
   ],
+  letterToggle: [
+    '[data-qa="vacancy-response-popup-form-add-cover-letter"]',
+    '[data-qa="vacancy-response-popup-form-letter-toggle"]',
+    'button:has-text("Добавить сопроводительное")',
+    '[role="button"]:has-text("Добавить сопроводительное")',
+    'button:has-text("Написать сопроводительное")',
+    '[role="button"]:has-text("Написать сопроводительное")',
+    'button:has-text("Добавить письмо")',
+  ],
   submit: ['[data-qa="vacancy-response-submit-popup"]', '[data-qa="vacancy-response-submit"]'],
   cancel: [
     '[data-qa="vacancy-response-popup-close"]',

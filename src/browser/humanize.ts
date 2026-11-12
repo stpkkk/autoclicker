@@ -13,14 +13,31 @@ export async function humanClick(locator: Locator): Promise<void> {
 }
 
 /**
- * Печатаем письмо посимвольно с человеческой задержкой.
- * Для длинного текста это медленно, зато не похоже на мгновенный `fill`.
+ * Вставляем письмо целиком: посимвольная печать длинного текста
+ * не укладывается в таймаут. После fill проверяем, что поле реально заполнено.
  */
 export async function humanType(locator: Locator, text: string): Promise<void> {
   await locator.scrollIntoViewIfNeeded().catch(() => undefined);
   await locator.click();
-  await locator.fill('').catch(() => undefined);
-  await locator.pressSequentially(text, { delay: randomInt(15, 40) });
+  await humanPause(300, 800);
+  await locator.fill(text);
+  await humanPause(300, 800);
+
+  const isFormField = await locator
+    .evaluate((node) => node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement)
+    .catch(() => false);
+  const actual = isFormField ? await locator.inputValue() : ((await locator.textContent()) ?? '');
+
+  if (normalizeValue(actual) !== normalizeValue(text)) {
+    throw new Error(
+      `Сопроводительное письмо не вставилось полностью: в поле ${actual.length} симв., ` +
+        `ожидалось ${text.length}.`,
+    );
+  }
+}
+
+function normalizeValue(value: string): string {
+  return value.replace(/\r\n/g, '\n');
 }
 
 export async function humanScroll(page: Page): Promise<void> {

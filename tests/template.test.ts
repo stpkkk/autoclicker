@@ -26,6 +26,15 @@ describe('pickTemplate', () => {
 });
 
 describe('renderTemplate', () => {
+  it('подставляет {{vacancy_name}} и {{employer_name}}', () => {
+    const result = renderTemplate('Вакансия {{vacancy_name}} в компании {{employer_name}}', {
+      vacancy_name: 'React Developer',
+      employer_name: 'Acme',
+    });
+
+    expect(result).toBe('Вакансия React Developer в компании Acme');
+  });
+
   it('подставляет название вакансии и компанию', () => {
     const result = renderTemplate(
       'Вакансия {{vacancy_name}} в {{employer_name}}. Ещё раз: {{ vacancy_name }}.',

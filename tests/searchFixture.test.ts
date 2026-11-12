@@ -6,7 +6,9 @@ import { filterVacancy, type FilterSettings } from '../src/core/filter.js';
 import { extractVacanciesFromPage } from '../src/hh/search.js';
 
 const settings: FilterSettings = {
-  stop_words: ['Java'],
+  title_stop_words: ['Java'],
+  requirements_stop_words: ['Java'],
+  requirements_stop_min_hits: 2,
   must_have_any: ['React', 'Frontend'],
   skip_relocation: false,
   allowed_cities: [],
@@ -52,7 +54,7 @@ describe('парсинг выдачи на HTML-фикстуре (без сет�
     expect(first ? filterVacancy(first, settings) : null).toEqual({ ok: true });
     expect(second ? filterVacancy(second, settings) : null).toEqual({
       ok: false,
-      reason: 'stop_word:Java',
+      reason: 'stop_word:Java (title)',
     });
   });
 });

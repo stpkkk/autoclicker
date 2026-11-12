@@ -35,7 +35,9 @@ export const configSchema = z
       .strict(),
     filters: z
       .object({
-        stop_words: z.array(z.string().trim().min(1)).default([]),
+        title_stop_words: z.array(z.string().trim().min(1)).default([]),
+        requirements_stop_words: z.array(z.string().trim().min(1)).default([]),
+        requirements_stop_min_hits: z.number().int().min(1).default(2),
         must_have_any: z.array(z.string().trim().min(1)).default([]),
         skip_relocation: z.boolean().default(true),
         allowed_cities: z.array(z.string().trim().min(1)).default([]),
