@@ -1,0 +1,108 @@
+# Скопируйте этот файл в config.yaml и поправьте под себя.
+# config.yaml добавлен в .gitignore — там ваши личные данные.
+
+search:
+  queries:
+    - 'Fullstack разработчик'
+    - 'Frontend разработчик React'
+    - 'React'
+    - 'Vue.js разработчик'
+    - 'Node.js NestJS'
+
+  # 113 — вся Россия. Можно поставить 1 (Москва) или 2 (Санкт-Петербург).
+  area: 113
+
+  # Значения hh.ru: remote, fullDay, shift, flexible, flyInFlyOut.
+  schedule: remote, fullDay, shift, flexible, flyInFlyOut
+
+  # Значения hh.ru: noExperience, between1And3, between3And6, moreThan6.
+  experience: between3And6
+
+  # Зарплата опциональна. Если задана — hh отфильтрует вакансии ниже порога.
+  # salary: 250000
+  only_with_salary: false
+
+  # За сколько последних дней искать вакансии.
+  period: 10
+
+  # Сколько страниц выдачи просматривать по каждому запросу.
+  max_pages_per_query: 3
+
+filters:
+  # Стоп-слова ищутся в названии и описании с учётом границ слов и регистра.
+  # Важно: "Java" не должно срабатывать на "JavaScript".
+  stop_words:
+    - '1С'
+    - 'Bitrix'
+    - 'Битрикс'
+    - 'WordPress'
+    - 'PHP'
+    - 'Java'
+    - 'C#'
+    - '.NET'
+    - 'Unity'
+    - 'стажёр'
+    - 'стажер'
+    - 'intern'
+    - 'Senior+'
+    - 'Lead'
+    - 'тимлид'
+    - 'DevOps'
+    - 'QA'
+    - 'тестировщик'
+    - 'Angular'
+
+  # Достаточно одного совпадения. Если список пуст — проверка отключается.
+  must_have_any:
+    - 'React'
+    - 'Vue'
+    - 'TypeScript'
+    - 'Node.js'
+    - 'NestJS'
+    - 'Fullstack'
+    - 'Frontend'
+
+  # Пропускать вакансии с переездом/офисом в другом городе, если это не remote.
+  skip_relocation: false
+
+  # Необязательно. Если заполнить, вакансии с другим городом в адресе будут
+  # пропускаться (при skip_relocation: true и отсутствии remote).
+  # Например: ["Москва", "Санкт-Петербург"].
+  allowed_cities: []
+
+limits:
+  # Жёсткий максимум в приложении — 100 откликов в сутки.
+  daily_limit: 10
+
+  # Случайная пауза между откликами, миллисекунды.
+  delay_ms_min: 15000
+  delay_ms_max: 45000
+
+cover_letter:
+  templates:
+    # {{vacancy_name}} и {{employer_name}} подставляются автоматически.
+    frontend: |
+      Добрый день!
+
+      Заинтересовала вакансия Frontend-разработчик в компании "{{employer_name}}". Разрабатываю больше 4,5 лет, мне ближе сложные интерфейсы и скорость их работы. Делал дашборды с большими объёмами данных, списки на тысячи записей, переиспользуемые компоненты и npm-пакеты.
+
+      Работаю с React, Vue, Next.js, TypeScript, Redux Toolkit, TanStack Query, Tailwind и Git.  
+      Telegram [https://t.me/stpk_dev](https://t.me/stpk_dev)  
+      GitHub [https://github.com/stpkkk](https://github.com/stpkkk)
+
+      Буду рад обсудить, чем могу помочь команде.
+
+      Игорь Степанов
+
+    fullstack: |
+      Добрый день!
+
+      Заинтересовала вакансия Разработчика в компании "{{employer_name}}". Разрабатываю больше 4,5 лет, последние почти два года веду задачи целиком. Делаю API и схему БД на NestJS, PostgreSQL и Prisma, интерфейс на Vue или React с TypeScript, подключаю внешние сервисы.
+
+      Работаю с React, Vue, Next.js, TypeScript, Node.js, NestJS, PostgreSQL, Prisma и Git.  
+      Telegram [https://t.me/stpk_dev](https://t.me/stpk_dev)  
+      GitHub [https://github.com/stpkkk](https://github.com/stpkkk)
+
+      Буду рад обсудить, чем могу помочь команде.
+
+      Игорь Степанов

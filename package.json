@@ -1,0 +1,59 @@
+{
+  "name": "hh-autoapply",
+  "version": "0.1.0",
+  "description": "CLI для автоматизации откликов на hh.ru через Playwright (только ручной вход)",
+  "main": "dist/cli.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
+    "start": "node dist/cli.js",
+    "test": "vitest run",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "typecheck": "tsc --noEmit",
+    "playwright:install": "playwright install chromium",
+    "login": "tsx src/cli.ts login",
+    "check": "tsx src/cli.ts check",
+    "doctor": "tsx src/cli.ts doctor",
+    "search": "tsx src/cli.ts search",
+    "apply": "tsx src/cli.ts apply",
+    "stats": "tsx src/cli.ts stats"
+  },
+  "keywords": [
+    "hh",
+    "hh.ru",
+    "playwright",
+    "automation",
+    "cli",
+    "typescript"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "hh-autoapply": "dist/cli.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.1.1",
+    "commander": "^15.1.0",
+    "pino": "^10.4.0",
+    "pino-pretty": "^13.2.0",
+    "playwright": "^1.65.0",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^26.6.6",
+    "eslint": "^10.14.0",
+    "prettier": "^3.10.1",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.2",
+    "vitest": "^4.1.12"
+  }
+}

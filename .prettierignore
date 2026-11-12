@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+.browser-profile/
+data/
+.tmp-hh/
+config.yaml
+package-lock.json
+tests/fixtures/
