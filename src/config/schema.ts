@@ -26,6 +26,13 @@ const resumeByTemplateSchema = z
   })
   .strict();
 
+const questionsSchema = z
+  .object({
+    open_in_new_tab: z.boolean().default(true),
+    max_open_tabs: z.number().int().min(0).max(50).default(5),
+  })
+  .strict();
+
 export const configSchema = z
   .object({
     search: z
@@ -63,6 +70,7 @@ export const configSchema = z
       }),
     cover_letter: coverLetterSchema,
     resume_by_template: resumeByTemplateSchema,
+    questions: questionsSchema.default({ open_in_new_tab: true, max_open_tabs: 5 }),
   })
   .strict();
 

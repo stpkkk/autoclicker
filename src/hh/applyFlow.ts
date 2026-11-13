@@ -11,6 +11,11 @@ import type { Vacancy } from '../types.js';
 import { logger } from '../utils/logger.js';
 import { retry } from '../utils/retry.js';
 import { sleep } from '../utils/sleep.js';
+import {
+  buildQuestionnaireResponseUrl,
+  ManualQuestionTabs,
+  type ManualTabEntry,
+} from './manualQuestions.js';
 import { collectAllVacancies } from './search.js';
 import {
   clickSubmit,
@@ -42,6 +47,8 @@ export interface ApplySummary {
   skipped: number;
   errors: number;
   stoppedReason?: string;
+  manualTabs: ManualTabEntry[];
+  manualTabsOpen: boolean;
 }
 
 type ProcessOutcome = { kind: 'planned' } | { kind: 'sent' } | { kind: 'skipped'; reason: string };
@@ -50,12 +57,48 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function formatSummary(summary: ApplySummary): string {
+  return (
+    `отправлено=${summary.sent}, запланировано=${summary.planned}, ` +
+    `пропущено=${summary.skipped}, ошибок=${summary.errors}` +
+    (summary.stoppedReason ? `, остановка=${summary.stoppedReason}` : '')
+  );
+}
+
+function logSummary(prefix: string, summary: ApplySummary): void {
+  logger.info(`${prefix}: ${formatSummary(summary)}`);
+}
+
+/**
+ * Возвращает основную вкладку автоматизации на страницу вакансии, если отклик
+ * открылся в ней же. Дополнительную вкладку, созданную самой автоматизацией,
+ * закрываем: для ручного заполнения будет открыта отдельная вкладка.
+ */
+async function restoreAutomationPage(
+  page: Page,
+  formPage: Page,
+  newPage: Page | null | undefined,
+  vacancyUrl: string,
+): Promise<void> {
+  if (newPage && newPage !== page) {
+    await newPage.close().catch(() => undefined);
+    return;
+  }
+
+  if (formPage === page && /\/applicant\/vacancy_response/iu.test(page.url())) {
+    await page.goto(vacancyUrl, { waitUntil: 'domcontentloaded' }).catch(async () => {
+      await page.goBack({ waitUntil: 'domcontentloaded' }).catch(() => undefined);
+    });
+  }
+}
+
 async function processVacancy(
   page: Page,
   config: AppConfig,
   repository: ApplicationRepository,
   vacancy: Vacancy,
   options: ApplyOptions,
+  manualTabs: ManualQuestionTabs,
 ): Promise<ProcessOutcome> {
   logger.info(`Открываю вакансию: ${vacancy.title} — ${vacancy.company || 'компания не указана'}`);
 
@@ -100,6 +143,16 @@ async function processVacancy(
   if (await hasEmployerQuestions(page)) {
     logger.info('Пропуск: у вакансии есть вопросы/анкета работодателя');
     repository.markSkipped(fullVacancy, 'needs_questions');
+
+    const earlyButton = await findResponseButton(page);
+    const responseHref = earlyButton
+      ? await earlyButton.getAttribute('href').catch(() => null)
+      : null;
+    await manualTabs.open(
+      fullVacancy,
+      buildQuestionnaireResponseUrl(page.url(), fullVacancy.id, responseHref),
+    );
+
     return { kind: 'skipped', reason: 'needs_questions' };
   }
 
@@ -175,11 +228,17 @@ async function processVacancy(
 
   if (await responseFormHasQuestions(formPage, form)) {
     logger.info('Пропуск: форма отклика содержит вопросы работодателя');
-    await closeResponseForm(formPage, form);
-    if (newPage) {
-      await newPage.close().catch(() => undefined);
-    }
     repository.markSkipped(fullVacancy, 'needs_questions');
+
+    const responseHref = await responseButton.getAttribute('href').catch(() => null);
+    const formUrl = formPage.url();
+    const responseUrl = /\/applicant\/vacancy_response/iu.test(formUrl)
+      ? formUrl
+      : buildQuestionnaireResponseUrl(formUrl, fullVacancy.id, responseHref);
+
+    await restoreAutomationPage(page, formPage, newPage, fullVacancy.url);
+    await manualTabs.open(fullVacancy, responseUrl);
+
     return { kind: 'skipped', reason: 'needs_questions' };
   }
 
@@ -254,7 +313,15 @@ export async function runApply(
   repository: ApplicationRepository,
   options: ApplyOptions,
 ): Promise<ApplySummary> {
-  const summary: ApplySummary = { planned: 0, sent: 0, skipped: 0, errors: 0 };
+  const summary: ApplySummary = {
+    planned: 0,
+    sent: 0,
+    skipped: 0,
+    errors: 0,
+    manualTabs: [],
+    manualTabsOpen: false,
+  };
+  const manualTabs = new ManualQuestionTabs(page.context(), config.questions, repository);
   const limit = resolveDailyLimit(config.limits.daily_limit, options.limit);
   const sentToday = repository.countSentToday();
   const remaining = calculateRemaining(limit, sentToday);
@@ -267,6 +334,7 @@ export async function runApply(
   if (remaining === 0) {
     summary.stoppedReason = 'daily_limit';
     logger.warn('Дневной лимит уже исчерпан — останавливаюсь.');
+    logSummary('Итог', summary);
     return summary;
   }
 
@@ -277,6 +345,7 @@ export async function runApply(
     if (repository.hasSent(vacancy.id)) {
       summary.skipped += 1;
       logger.info(`Пропуск: уже отправлен ранее (SQLite) — ${vacancy.title}`);
+      logSummary('Прогресс', summary);
       continue;
     }
 
@@ -286,6 +355,7 @@ export async function runApply(
       repository.markSkipped(vacancy, reason);
       summary.skipped += 1;
       logger.info(`Пропуск по фильтру (${reason}): ${vacancy.title}`);
+      logSummary('Прогресс', summary);
       continue;
     }
 
@@ -301,6 +371,7 @@ export async function runApply(
     if (processed >= remaining) {
       summary.stoppedReason = options.send ? 'daily_limit' : 'dry_run_limit';
       logger.warn('Достигнут лимит запуска — останавливаюсь.');
+      logSummary('Прогресс', summary);
       break;
     }
 
@@ -310,7 +381,14 @@ export async function runApply(
     }
 
     try {
-      const outcome = await processVacancy(page, config, repository, vacancy, options);
+      const outcome = await processVacancy(
+        page,
+        config,
+        repository,
+        vacancy,
+        options,
+        manualTabs,
+      );
       consecutiveErrors = 0;
 
       if (outcome.kind === 'sent') {
@@ -322,16 +400,19 @@ export async function runApply(
       } else {
         summary.skipped += 1;
       }
+      logSummary('Прогресс', summary);
     } catch (error) {
       if (error instanceof AuthRequiredError) {
         summary.stoppedReason = 'auth_required';
         logger.error(error.message);
+        logSummary('Прогресс', summary);
         break;
       }
 
       if (error instanceof HardStopError) {
         summary.stoppedReason = error.kind;
         logger.error(`Остановка: ${error.message}`);
+        logSummary('Прогресс', summary);
         break;
       }
 
@@ -344,6 +425,10 @@ export async function runApply(
       if (consecutiveErrors >= 3) {
         summary.stoppedReason = 'consecutive_errors';
         logger.error('Три ошибки подряд — останавливаюсь, чтобы не рисковать аккаунтом.');
+      }
+      logSummary('Прогресс', summary);
+
+      if (consecutiveErrors >= 3) {
         break;
       }
     }
@@ -353,11 +438,10 @@ export async function runApply(
     summary.stoppedReason = options.send ? 'daily_limit' : 'dry_run_limit';
   }
 
-  logger.info(
-    `Итог: отправлено=${summary.sent}, запланировано=${summary.planned}, ` +
-      `пропущено=${summary.skipped}, ошибок=${summary.errors}` +
-      (summary.stoppedReason ? `, остановка=${summary.stoppedReason}` : ''),
-  );
+  summary.manualTabs = manualTabs.entries;
+  summary.manualTabsOpen = manualTabs.hasOpenedTabs;
+
+  logSummary('Итог', summary);
 
   return summary;
 }

@@ -22,6 +22,7 @@ export interface ApplicationRecord {
   templateUsed?: string;
   createdAt: string;
   sentAt?: string;
+  manualOpenedAt?: string;
 }
 
 export interface FilterResult {

@@ -2,7 +2,12 @@
 import { Command } from 'commander';
 import type { Page } from 'playwright';
 import { AuthRequiredError, HardStopError } from './browser/guards.js';
-import { dismissCookieBanner, HH_HOME_URL, openSession } from './browser/session.js';
+import {
+  type BrowserSession,
+  dismissCookieBanner,
+  HH_HOME_URL,
+  openSession,
+} from './browser/session.js';
 import { ConfigError, loadConfig } from './config/load.js';
 import type { AppConfig } from './config/schema.js';
 import { filterVacancy } from './core/filter.js';
@@ -33,6 +38,30 @@ async function withSession(fn: (page: Page) => Promise<void>): Promise<void> {
   } finally {
     await session.close();
   }
+}
+
+/**
+ * Ждёт, пока человек закроет окно браузера с ручными вкладками.
+ * Ctrl+C тоже завершает ожидание и корректно закрывает контекст.
+ */
+async function waitForBrowserClose(session: BrowserSession): Promise<void> {
+  const browser = session.context.browser();
+  if (browser && !browser.isConnected()) {
+    return;
+  }
+
+  await new Promise<void>((resolve) => {
+    const onSigint = () => {
+      void session.close().finally(() => resolve());
+    };
+    const onClose = () => {
+      process.removeListener('SIGINT', onSigint);
+      resolve();
+    };
+
+    process.once('SIGINT', onSigint);
+    session.context.once('close', onClose);
+  });
 }
 
 async function run(action: () => Promise<void>): Promise<void> {
@@ -183,13 +212,33 @@ program
       const repository = new ApplicationRepository(db);
 
       try {
-        await withSession(async (page) => {
-          await runApply(page, config, repository, {
+        const session = await openSession();
+        try {
+          const summary = await runApply(session.page, config, repository, {
             send: options.send === true,
             limit: options.limit,
             resumeName: options.resume,
           });
-        });
+
+          if (summary.manualTabs.length > 0) {
+            logger.info('Ссылки на анкеты для ручного заполнения:');
+            for (const entry of summary.manualTabs) {
+              const label = entry.opened
+                ? 'открыта'
+                : entry.reason === 'limit'
+                  ? 'лимит вкладок'
+                  : 'не открыта';
+              console.log(`  - [${label}] ${entry.title}: ${entry.url}`);
+            }
+          }
+
+          if (summary.manualTabsOpen) {
+            logger.info('Заполните анкеты и закройте окно браузера');
+            await waitForBrowserClose(session);
+          }
+        } finally {
+          await session.close();
+        }
       } finally {
         db.close();
       }

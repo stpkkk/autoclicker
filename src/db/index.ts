@@ -25,6 +25,7 @@ interface ApplicationRow {
   template_used: string | null;
   created_at: string;
   sent_at: string | null;
+  manual_opened_at: string | null;
 }
 
 interface CountRow {
@@ -51,12 +52,19 @@ export function initializeDatabase(db: Db): void {
       reason        TEXT,
       template_used TEXT,
       created_at    TEXT NOT NULL,
-      sent_at       TEXT
+      sent_at       TEXT,
+      manual_opened_at TEXT
     );
 
     CREATE INDEX IF NOT EXISTS idx_applications_status_created
       ON applications(status, created_at);
   `);
+
+  // Старые базы создавались без manual_opened_at — добавляем колонку на месте.
+  const columns = db.prepare('PRAGMA table_info(applications)').all() as { name: string }[];
+  if (!columns.some((column) => column.name === 'manual_opened_at')) {
+    db.exec('ALTER TABLE applications ADD COLUMN manual_opened_at TEXT');
+  }
 }
 
 export function openDatabase(dbPath = DEFAULT_DB_PATH): Db {
@@ -88,6 +96,21 @@ export class ApplicationRepository {
       .prepare("SELECT 1 AS found FROM applications WHERE vacancy_id = ? AND status = 'sent'")
       .get(vacancyId) as { found: number } | undefined;
     return row !== undefined;
+  }
+
+  hasManualOpened(vacancyId: string): boolean {
+    const row = this.db
+      .prepare(
+        'SELECT 1 AS found FROM applications WHERE vacancy_id = ? AND manual_opened_at IS NOT NULL',
+      )
+      .get(vacancyId) as { found: number } | undefined;
+    return row !== undefined;
+  }
+
+  markManualOpened(vacancyId: string): void {
+    this.db
+      .prepare('UPDATE applications SET manual_opened_at = ? WHERE vacancy_id = ?')
+      .run(nowIso(), vacancyId);
   }
 
   markPlanned(vacancy: Vacancy, templateUsed?: string): void {
@@ -152,9 +175,11 @@ export class ApplicationRepository {
     this.db
       .prepare(
         `INSERT INTO applications
-           (vacancy_id, title, company, url, status, reason, template_used, created_at, sent_at)
+           (vacancy_id, title, company, url, status, reason, template_used, created_at, sent_at,
+            manual_opened_at)
          VALUES
-           (@vacancyId, @title, @company, @url, @status, @reason, @templateUsed, @createdAt, @sentAt)
+           (@vacancyId, @title, @company, @url, @status, @reason, @templateUsed, @createdAt, @sentAt,
+            NULL)
          ON CONFLICT(vacancy_id) DO UPDATE SET
            title = excluded.title,
            company = excluded.company,
@@ -174,7 +199,11 @@ export class ApplicationRepository {
            sent_at = CASE
              WHEN applications.status = 'sent' THEN applications.sent_at
              ELSE excluded.sent_at
-           END`,
+           END,
+           manual_opened_at = COALESCE(
+             applications.manual_opened_at,
+             excluded.manual_opened_at
+           )`,
       )
       .run({
         vacancyId: vacancy.id,
@@ -200,6 +229,7 @@ export class ApplicationRepository {
       templateUsed: row.template_used ?? undefined,
       createdAt: row.created_at,
       sentAt: row.sent_at ?? undefined,
+      manualOpenedAt: row.manual_opened_at ?? undefined,
     };
   }
 }
