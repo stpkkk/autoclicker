@@ -5,7 +5,7 @@ import { dismissCookieBanner } from '../browser/session.js';
 import type { AppConfig } from '../config/schema.js';
 import { filterVacancy } from '../core/filter.js';
 import { calculateRemaining, resolveDailyLimit } from '../core/limits.js';
-import { pickTemplate, renderTemplate } from '../core/template.js';
+import { pickApplicationChoice, renderTemplate } from '../core/template.js';
 import type { ApplicationRepository } from '../db/index.js';
 import type { Vacancy } from '../types.js';
 import { logger } from '../utils/logger.js';
@@ -116,8 +116,13 @@ async function processVacancy(
     return { kind: 'skipped', reason: 'response_unavailable' };
   }
 
-  const templateKind = pickTemplate(fullVacancy.title);
-  const coverLetter = renderTemplate(config.cover_letter.templates[templateKind], {
+  const choice = pickApplicationChoice(
+    fullVacancy.title,
+    config.cover_letter.templates,
+    config.resume_by_template,
+    options.resumeName,
+  );
+  const coverLetter = renderTemplate(choice.template, {
     vacancy_name: fullVacancy.title,
     employer_name: fullVacancy.company || 'вашей компании',
   });
@@ -126,7 +131,7 @@ async function processVacancy(
     const label = (await responseButton.innerText().catch(() => '')).trim();
     if (!/откликнуться/iu.test(label)) {
       logger.warn(`[dry-run] Кнопка «${label}» не открывает форму — не нажимаю.`);
-      repository.markPlanned(fullVacancy, templateKind);
+      repository.markPlanned(fullVacancy, choice.templateKind);
       return { kind: 'planned' };
     }
   }
@@ -178,11 +183,12 @@ async function processVacancy(
     return { kind: 'skipped', reason: 'needs_questions' };
   }
 
-  const resume = await selectResume(formPage, form, options.resumeName);
+  const resume = await selectResume(formPage, form, choice.resumeName);
   if (!resume.ok) {
-    const reason = resume.reason ?? 'resume_not_found';
+    const reason = resume.reason ?? 'resume_mismatch';
     logger.warn(
-      `Пропуск: не удалось выбрать резюме «${options.resumeName ?? ''}»` +
+      `Пропуск (${reason}): нужно резюме «${choice.resumeName}»` +
+        (resume.selected ? `, сейчас выбрано «${resume.selected}»` : '') +
         (resume.options?.length ? `. Доступные: ${resume.options.join(', ')}` : ''),
     );
     await closeResponseForm(formPage, form);
@@ -204,14 +210,16 @@ async function processVacancy(
 
   if (!options.send) {
     logger.info(
-      `[dry-run] Отклик НЕ отправлен. Шаблон: ${templateKind}, письмо: ${coverLetter.length} симв.`,
+      `[dry-run] Отклик НЕ отправлен. Вакансия: «${fullVacancy.title}», ` +
+        `шаблон: ${choice.templateKind}, резюме: ${resume.selected ?? '—'}, ` +
+        `письмо: ${coverLetter.length} симв.`,
     );
     logger.info(`[dry-run] Начало письма: ${coverLetter.slice(0, 100)}...`);
     await closeResponseForm(formPage, form);
     if (newPage) {
       await newPage.close().catch(() => undefined);
     }
-    repository.markPlanned(fullVacancy, templateKind);
+    repository.markPlanned(fullVacancy, choice.templateKind);
     return { kind: 'planned' };
   }
 
@@ -231,7 +239,7 @@ async function processVacancy(
     throw new Error('hh.ru не подтвердил отправку отклика');
   }
 
-  repository.markSent(fullVacancy, templateKind);
+  repository.markSent(fullVacancy, choice.templateKind);
   logger.info(`Отклик отправлен: ${fullVacancy.title}`);
   if (newPage) {
     await newPage.close().catch(() => undefined);

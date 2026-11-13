@@ -124,13 +124,26 @@ export const RESPONSE_SELECTORS = {
     'select[name="resume"]',
     'select[data-qa*="resume"]',
   ],
+  // Резюме в модалке — кастомный magritte-select, а не <select>.
+  // Видимое название резюме лежит в [data-qa="resume-title"], кликабельный
+  // контейнер — его ближайший предок с role="button".
+  resumeTitle: ['[data-qa="resume-title"]'],
   resumeTrigger: [
     '[data-qa="vacancy-response-resume-select"]',
     '[data-qa="resume-select"]',
     '[data-qa*="resume"] [role="button"]',
   ],
+  // Список опций рендерится в портал (drop-base), вне контейнера модалки.
+  resumeOptionList: [
+    '[data-qa="magritte-select-option-list"]',
+    '[data-qa="drop-base"]',
+    '[role="listbox"]',
+  ],
   success: ['[data-qa="vacancy-response-success"]', '[data-qa="vacancy-response-popup-success"]'],
 } as const;
+
+/** От [data-qa="resume-title"] к кликабельному контейнеру magritte-select. */
+export const RESUME_TRIGGER_ANCESTOR = 'xpath=ancestor::*[@role="button"][1]';
 
 export const LOGIN_SELECTORS = {
   form: ['[data-qa="account-login-form"]', '[data-qa="applicant-login-card"]'],

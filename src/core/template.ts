@@ -5,6 +5,17 @@ export interface CoverLetterTemplates {
   fullstack: string;
 }
 
+export interface ResumeByTemplate {
+  frontend: string;
+  fullstack: string;
+}
+
+export interface ApplicationChoice {
+  templateKind: TemplateKind;
+  template: string;
+  resumeName: string;
+}
+
 export interface TemplateVars {
   vacancy_name: string;
   employer_name: string;
@@ -19,6 +30,26 @@ export const FULLSTACK_TITLE_PATTERN =
 
 export function pickTemplate(title: string): TemplateKind {
   return FULLSTACK_TITLE_PATTERN.test(title) ? 'fullstack' : 'frontend';
+}
+
+/**
+ * Один общий выбор для письма и резюме: вид вакансии определяется `pickTemplate`,
+ * поэтому правило не дублируется. Явное название резюме (--resume) важнее конфига.
+ */
+export function pickApplicationChoice(
+  title: string,
+  templates: CoverLetterTemplates,
+  resumeByTemplate: ResumeByTemplate,
+  resumeOverride?: string,
+): ApplicationChoice {
+  const templateKind = pickTemplate(title);
+  const overrideName = resumeOverride?.trim();
+
+  return {
+    templateKind,
+    template: templates[templateKind],
+    resumeName: overrideName ? overrideName : resumeByTemplate[templateKind],
+  };
 }
 
 export function renderTemplate(template: string, vars: TemplateVars): string {

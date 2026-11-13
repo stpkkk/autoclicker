@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { pickTemplate, renderTemplate } from '../src/core/template.js';
+import { pickApplicationChoice, pickTemplate, renderTemplate } from '../src/core/template.js';
+
+const TEMPLATES = { frontend: 'frontend letter', fullstack: 'fullstack letter' };
+const RESUMES = {
+  frontend: 'Frontend-разработчик',
+  fullstack: 'Fullstack-разработчик',
+};
 
 describe('pickTemplate', () => {
   it.each([
@@ -22,6 +28,47 @@ describe('pickTemplate', () => {
     ['Team Lead Frontend', 'frontend'],
   ])('выбирает frontend для %s', (title, expected) => {
     expect(pickTemplate(title)).toBe(expected);
+  });
+});
+
+describe('pickApplicationChoice: резюме по названию вакансии', () => {
+  it.each([
+    ['Fullstack разработчик', 'Fullstack-разработчик'],
+    ['Full-stack Developer', 'Fullstack-разработчик'],
+    ['Node.js developer', 'Fullstack-разработчик'],
+    ['NestJS developer', 'Fullstack-разработчик'],
+    ['Frontend разработчик React', 'Frontend-разработчик'],
+    ['React TypeScript Developer', 'Frontend-разработчик'],
+    ['Vue.js разработчик', 'Frontend-разработчик'],
+  ])('для «%s» выбирает «%s»', (title, expected) => {
+    const choice = pickApplicationChoice(title, TEMPLATES, RESUMES);
+
+    expect(choice.resumeName).toBe(expected);
+  });
+
+  it('берёт письмо и резюме по одному и тому же виду вакансии', () => {
+    const choice = pickApplicationChoice('Node.js developer', TEMPLATES, RESUMES);
+
+    expect(choice.templateKind).toBe('fullstack');
+    expect(choice.template).toBe(TEMPLATES.fullstack);
+    expect(choice.resumeName).toBe(RESUMES.fullstack);
+  });
+});
+
+describe('pickApplicationChoice: приоритет --resume', () => {
+  it.each([['Fullstack разработчик'], ['Frontend разработчик React']])(
+    '--resume важнее конфига для «%s»',
+    (title) => {
+      const choice = pickApplicationChoice(title, TEMPLATES, RESUMES, 'Моё резюме');
+
+      expect(choice.resumeName).toBe('Моё резюме');
+    },
+  );
+
+  it('пустой --resume не перекрывает конфиг', () => {
+    const choice = pickApplicationChoice('Frontend разработчик', TEMPLATES, RESUMES, '   ');
+
+    expect(choice.resumeName).toBe(RESUMES.frontend);
   });
 });
 

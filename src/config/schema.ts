@@ -19,6 +19,13 @@ const coverLetterSchema = z
   })
   .strict();
 
+const resumeByTemplateSchema = z
+  .object({
+    frontend: z.string().trim().min(1, 'Резюме frontend не должно быть пустым'),
+    fullstack: z.string().trim().min(1, 'Резюме fullstack не должно быть пустым'),
+  })
+  .strict();
+
 export const configSchema = z
   .object({
     search: z
@@ -46,8 +53,8 @@ export const configSchema = z
     limits: z
       .object({
         daily_limit: z.number().int().min(1).max(100).default(30),
-        delay_ms_min: z.number().int().min(1000).default(15000),
-        delay_ms_max: z.number().int().min(1000).default(45000),
+        delay_ms_min: z.number().int().min(1000).default(5000),
+        delay_ms_max: z.number().int().min(1000).default(25000),
       })
       .strict()
       .refine((value) => value.delay_ms_min <= value.delay_ms_max, {
@@ -55,6 +62,7 @@ export const configSchema = z
         path: ['delay_ms_min'],
       }),
     cover_letter: coverLetterSchema,
+    resume_by_template: resumeByTemplateSchema,
   })
   .strict();
 

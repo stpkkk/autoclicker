@@ -8,6 +8,7 @@ import {
   firstVisibleLocator,
   hasQuestionnaireForm,
   RESPONSE_SELECTORS,
+  RESUME_TRIGGER_ANCESTOR,
   TEXT_INDICATORS,
   VACANCY_SELECTORS,
   waitForAny,
@@ -27,8 +28,116 @@ export interface ResumeSelectionResult {
   options?: string[];
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function normalizeResumeName(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Видимое название выбранного резюме вне выпадающего списка.
+ * В открытом magritte-дропдауне тоже есть [data-qa="resume-title"], их пропускаем.
+ */
+async function findVisibleResumeTitle(root: Root): Promise<Locator | null> {
+  const titles = root.locator(RESPONSE_SELECTORS.resumeTitle[0]);
+  const count = await titles.count().catch(() => 0);
+
+  for (let index = 0; index < count; index += 1) {
+    const title = titles.nth(index);
+    try {
+      if (!(await title.isVisible())) {
+        continue;
+      }
+      const insideOptionList = await title.evaluate((node) =>
+        Boolean(
+          node.closest(
+            '[role="listbox"], [data-qa="drop-base"], [data-qa="magritte-select-option-list"]',
+          ),
+        ),
+      );
+      if (!insideOptionList) {
+        return title;
+      }
+    } catch {
+      // Элемент мог исчезнуть между count и isVisible — идём дальше.
+    }
+  }
+
+  return null;
+}
+
+async function readSelectedResume(root: Root): Promise<string | undefined> {
+  const select = await firstLocator(root, RESPONSE_SELECTORS.resumeSelect);
+  if (select) {
+    const tagName = await select
+      .evaluate((element) => element.tagName.toLowerCase())
+      .catch(() => '');
+    if (tagName === 'select') {
+      const text = normalizeResumeName(
+        await select
+          .locator('option:checked')
+          .first()
+          .innerText()
+          .catch(() => ''),
+      );
+      if (text) {
+        return text;
+      }
+    }
+  }
+
+  const title = await findVisibleResumeTitle(root);
+  if (!title) {
+    return undefined;
+  }
+
+  const text = normalizeResumeName(await title.innerText().catch(() => ''));
+  return text || undefined;
+}
+
+async function waitForSelectedResume(
+  root: Root,
+  expected: string,
+  timeoutMs: number,
+): Promise<string | undefined> {
+  const deadline = Date.now() + timeoutMs;
+  let last: string | undefined;
+
+  while (Date.now() < deadline) {
+    last = await readSelectedResume(root);
+    if (last && normalizeResumeName(last) === expected) {
+      return last;
+    }
+    await sleep(200);
+  }
+
+  return last;
+}
+
+async function findResumeTrigger(root: Root): Promise<Locator | null> {
+  const fromSelectors = await firstVisibleLocator(root, RESPONSE_SELECTORS.resumeTrigger);
+  if (fromSelectors) {
+    return fromSelectors;
+  }
+
+  const title = await findVisibleResumeTitle(root);
+  if (!title) {
+    return null;
+  }
+
+  const button = title.locator(RESUME_TRIGGER_ANCESTOR);
+  if ((await button.count().catch(() => 0)) > 0) {
+    return button.first();
+  }
+
+  return null;
+}
+
+function findResumeOptionIndex(options: string[], desired: string): number {
+  let index = options.findIndex((option) => option === desired);
+  if (index < 0) {
+    const desiredLower = desired.toLowerCase();
+    index = options.findIndex((option) => option.toLowerCase() === desiredLower);
+  }
+  return index;
 }
 
 export async function waitForResponseForm(
@@ -102,8 +211,7 @@ export async function fillCoverLetter(
   let letter = await waitForAny(form.root, RESPONSE_SELECTORS.letter, 3000);
 
   if (!letter) {
-    const toggle =
-      (await findLetterToggle(form.root)) ?? (await findLetterToggle(page));
+    const toggle = (await findLetterToggle(form.root)) ?? (await findLetterToggle(page));
     if (toggle) {
       logger.info('Открываю поле сопроводительного письма');
       await humanClick(toggle);
@@ -125,14 +233,16 @@ export async function fillCoverLetter(
 }
 
 /**
- * Выбирает резюме по названию, если на форме есть выбор.
- * TODO: подтвердить селекторы кастомного дропдауна на своём аккаунте (doctor).
+ * Выбирает резюме по названию и проверяет, что выбор действительно применился.
+ * На hh это кастомный magritte-дропдаун: [data-qa="resume-title"] внутри
+ * role="button", опции — [role="option"] в портале drop-base.
  */
 export async function selectResume(
   page: Page,
   form: ResponseForm,
   resumeName?: string,
 ): Promise<ResumeSelectionResult> {
+  const desired = resumeName ? normalizeResumeName(resumeName) : '';
   const select =
     (await firstLocator(form.root, RESPONSE_SELECTORS.resumeSelect)) ??
     (await firstLocator(page, RESPONSE_SELECTORS.resumeSelect));
@@ -140,21 +250,36 @@ export async function selectResume(
   if (select) {
     const tagName = await select.evaluate((element) => element.tagName.toLowerCase());
     if (tagName === 'select') {
-      const options = await select.locator('option').allTextContents();
-      if (!resumeName) {
-        const selected = await select
-          .locator('option:checked')
-          .first()
-          .innerText()
-          .catch(() => '');
-        return { ok: true, selected: selected.trim() || undefined, options };
+      const optionLocator = select.locator('option');
+      const optionCount = await optionLocator.count();
+      const options: string[] = [];
+
+      for (let index = 0; index < optionCount; index += 1) {
+        options.push(
+          normalizeResumeName(
+            await optionLocator
+              .nth(index)
+              .innerText()
+              .catch(() => ''),
+          ),
+        );
       }
 
-      const option = select.locator('option').filter({ hasText: resumeName }).first();
-      if ((await option.count()) === 0) {
-        return { ok: false, reason: 'resume_not_found', options };
+      if (!desired) {
+        return { ok: true, selected: await readSelectedResume(form.root), options };
       }
 
+      const targetIndex = findResumeOptionIndex(options, desired);
+      if (targetIndex < 0) {
+        return {
+          ok: false,
+          reason: 'resume_mismatch',
+          selected: await readSelectedResume(form.root),
+          options,
+        };
+      }
+
+      const option = optionLocator.nth(targetIndex);
       const value = await option.getAttribute('value');
       if (value !== null) {
         await select.selectOption(value);
@@ -162,33 +287,83 @@ export async function selectResume(
         await select.selectOption({ label: (await option.innerText()).trim() });
       }
 
-      return { ok: true, selected: (await option.innerText()).trim(), options };
+      const selected = await waitForSelectedResume(form.root, desired, 5000);
+      if (!selected || normalizeResumeName(selected) !== desired) {
+        return { ok: false, reason: 'resume_mismatch', selected, options };
+      }
+      return { ok: true, selected, options };
     }
   }
 
-  const trigger =
-    (await firstVisibleLocator(form.root, RESPONSE_SELECTORS.resumeTrigger)) ??
-    (await firstVisibleLocator(page, RESPONSE_SELECTORS.resumeTrigger));
+  const trigger = (await findResumeTrigger(form.root)) ?? (await findResumeTrigger(page));
+  const current = (await readSelectedResume(form.root)) ?? (await readSelectedResume(page));
 
-  if (!trigger || !resumeName) {
-    return { ok: true };
+  // Выбора нет (одно резюме) — работаем как раньше.
+  if (!trigger) {
+    return { ok: true, selected: current };
+  }
+
+  if (!desired) {
+    return { ok: true, selected: current };
+  }
+
+  if (current && normalizeResumeName(current) === desired) {
+    return { ok: true, selected: current };
   }
 
   await humanClick(trigger);
-  const option = page
-    .getByRole('option', { name: new RegExp(escapeRegExp(resumeName), 'iu') })
-    .first();
-  try {
-    if ((await option.count()) === 0) {
+
+  const optionList = await waitForAny(page, RESPONSE_SELECTORS.resumeOptionList, 5000);
+  if (!optionList) {
+    const afterClick = (await readSelectedResume(form.root)) ?? (await readSelectedResume(page));
+    if (afterClick && normalizeResumeName(afterClick) !== desired) {
       await page.keyboard.press('Escape').catch(() => undefined);
-      return { ok: false, reason: 'resume_not_found' };
+      return { ok: false, reason: 'resume_mismatch', selected: afterClick };
     }
-    await humanClick(option);
-    return { ok: true, selected: resumeName };
-  } catch {
-    await page.keyboard.press('Escape').catch(() => undefined);
-    return { ok: false, reason: 'resume_not_found' };
+    return { ok: true, selected: afterClick };
   }
+
+  const optionLocator = optionList.locator('[role="option"]');
+  const optionCount = await optionLocator.count().catch(() => 0);
+  const options: string[] = [];
+
+  for (let index = 0; index < optionCount; index += 1) {
+    const option = optionLocator.nth(index);
+    const optionTitle = option.locator(RESPONSE_SELECTORS.resumeTitle[0]).first();
+    const text =
+      (await optionTitle.count().catch(() => 0)) > 0
+        ? await optionTitle.innerText().catch(() => '')
+        : await option.innerText().catch(() => '');
+    options.push(normalizeResumeName(text));
+  }
+
+  if (optionCount === 0) {
+    const afterClick = (await readSelectedResume(form.root)) ?? (await readSelectedResume(page));
+    if (afterClick && normalizeResumeName(afterClick) !== desired) {
+      await page.keyboard.press('Escape').catch(() => undefined);
+      return { ok: false, reason: 'resume_mismatch', selected: afterClick };
+    }
+    return { ok: true, selected: afterClick };
+  }
+
+  const targetIndex = findResumeOptionIndex(options, desired);
+  if (targetIndex < 0) {
+    await page.keyboard.press('Escape').catch(() => undefined);
+    return { ok: false, reason: 'resume_mismatch', selected: current, options };
+  }
+
+  await humanClick(optionLocator.nth(targetIndex));
+
+  const selected =
+    (await waitForSelectedResume(form.root, desired, 5000)) ??
+    (await waitForSelectedResume(page, desired, 1000));
+
+  if (!selected || normalizeResumeName(selected) !== desired) {
+    await page.keyboard.press('Escape').catch(() => undefined);
+    return { ok: false, reason: 'resume_mismatch', selected, options };
+  }
+
+  return { ok: true, selected, options };
 }
 
 export async function clickSubmit(page: Page, form: ResponseForm): Promise<boolean> {
